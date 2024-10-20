@@ -78,6 +78,7 @@ public class BCCI{
      e.printStackTrace();
     }
   }
+// Player Purchasing Function
   public static void Buyplyers(Players players, Teams teams ,Connection connection , Scanner scanner){
     System.out.print("Enter Players Id: ");
     int playersId = scanner.nextInt();
@@ -85,48 +86,111 @@ public class BCCI{
     int teamsId = scanner.nextInt();
     System.out.print("Enter players Name: ");
     String playersName = scanner.next();
+    scanner.nextLine();
+    System.out.print("Enter Team Name: ");
+    String TeamName = scanner.next();
+    System.out.println("Enter amount to buy Player");
+    double playeramount = scanner.nextDouble();
       if (players.getPlayersbyid(playersId) && teams.getTeamsbyid(teamsId)) {
-        if (cheakPlayersAvailable(playersId, playersName, connection)) {
-          String buyplayersquery = "INSERT INTO buyplyers(players_id , teams_id , buy_players) VALUES(?,?,?)";
+        if (cheakPlayersAvailable(playersId, connection)) {
+          String buyplayersquery = "INSERT INTO bcci(players_id , teams_id , Player_Name , Team_Name , player_totalprice) VALUES(?,?,?,?,?)";
+          String debitquery = "UPDATE teams SET totalamount = totalamount - ? WHERE  teams_id = ?";
+          String creditquery = "UPDATE  players SET baseprice =  baseprice + ? WHERE players_id = ?";
           try{
-              PreparedStatement preparedStatement = connection.prepareStatement(buyplayersquery);
-              preparedStatement.setInt(1, playersId);
-              preparedStatement.setInt(2, teamsId);
-              preparedStatement.setString(3, playersName);
-              int rowAffect = preparedStatement.executeUpdate();
-              if (rowAffect>0) {
-                  System.out.println("Buying Players Succesfull");
-              }else{
-                  System.out.println("Buying Players Filed");
+              connection.setAutoCommit(false);
+              
+              // Purchasing Player 
+              PreparedStatement buyPlayerStmt = connection.prepareStatement(buyplayersquery);
+              buyPlayerStmt.setInt(1, playersId);
+              buyPlayerStmt.setInt(2, teamsId);
+              buyPlayerStmt.setString(3, playersName);
+              buyPlayerStmt.setString(4, TeamName);
+              buyPlayerStmt.setDouble(5, playeramount);
+              
+              // Debit Amount From Team Table
+              PreparedStatement debitpreparedStatement = connection.prepareStatement(debitquery);
+              debitpreparedStatement.setDouble(1, playeramount);
+              debitpreparedStatement.setInt(2, teamsId);
+
+              // Credit Amount in Player Baseprize
+              PreparedStatement creditpreparedStatement = connection.prepareStatement(creditquery);
+              creditpreparedStatement.setDouble(1, playeramount);
+              creditpreparedStatement.setInt(2, playersId);
+
+              // All Task Perform Here
+              if (isSufficentAmount(teamsId, connection, playeramount)) {
+                debitpreparedStatement.executeUpdate();
+                creditpreparedStatement.executeUpdate();
+                buyPlayerStmt.executeUpdate();
+                connection.commit();
+                connection.setAutoCommit(true);
+                System.out.println("Player Purchased Successful !!!");
+              }
+              else{
+                connection.rollback();
+                connection.setAutoCommit(true);
+                System.out.println("Insufficent Balance");
               }
           }catch(SQLException e){
-             e.printStackTrace();
+            try {
+              connection.rollback();
+              System.out.println("Transaction rolled back due to an error.");
+              } catch (SQLException rollbackException) {
+              rollbackException.printStackTrace();
+            }
+              e.printStackTrace();
           }
-         }
+         }else {
+            System.out.println("Player is already purchased.");
+        }
       }
       else{
       System.out.println("Players and Teams doesn't Exits");
       }
   }
-  public static boolean cheakPlayersAvailable(int playersId ,String playersName , Connection connection){
-    String query ="SELECT COUNT(*) FROM players WHERE id = ? AND Full_Name = ?";
+ // Cheak Player Availvilty
+  public static boolean cheakPlayersAvailable(int playersId , Connection connection){
+    String cheakPlayerquery ="SELECT COUNT(*) FROM bcci WHERE players_id = ?";
     try{
-     PreparedStatement preparedStatement = connection.prepareStatement(query);
+     PreparedStatement preparedStatement = connection.prepareStatement(cheakPlayerquery);
      preparedStatement.setInt(1, playersId);
-     preparedStatement.setString(2, playersName);
      ResultSet resultSet = preparedStatement.executeQuery();
      if (resultSet.next()) {
          int count = resultSet.getInt(1);
          if (count == 0) {
-             return true;
-         }else{
+             System.out.println("Player Already Purchased");
              return false;
+         }else{
+             return true;
          } 
      }
      }catch(SQLException e){
      e.printStackTrace();
      }
      return false;
+ }
+     // Cheak Team Amount
+  public static boolean isSufficentAmount(int teamsId , Connection connection , double totalamount){
+    try{
+     String cheakbalencequeryString = "SELECT totalamount FROM teams WHERE teams_id = ?";
+
+     PreparedStatement preparedStatement = connection.prepareStatement(cheakbalencequeryString);
+     preparedStatement.setInt(1, teamsId);
+     ResultSet resultSet = preparedStatement.executeQuery();
+     if (resultSet.next()) {
+        double currentBalance = resultSet.getDouble("totalamount");
+        if (totalamount > currentBalance) {
+            System.out.println("Insufficient Amount");
+            return false;
+        }else{
+            System.out.println("Sufficient ");
+            return true;
+        }
+     }
+    }catch(SQLException e){
+      e.printStackTrace();
+    }
+    return false;
  }
 }
 
